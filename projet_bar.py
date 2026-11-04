@@ -1,49 +1,99 @@
 import sys
 import time
 import re
+from pathlib import Path
+
+print("LE SCRIPT DEMARRE")
+
+logf = None
+
+class Logable:
+    """
+    Classe de base pour disposer d'une méthode log.
+    """
+
+    def __init__(self, name, verbose):
+        self.name = name
+        self.verbose = verbose
+
+    def log(self, msg):
+        if self.verbose:
+            print(f"[{self.name}] {msg}", file=logf, flush=True)
 
 
-class Accessoire:
-    """Classe mère des accessoires du bar"""
+class Accessoire(Logable):
+    """Classe mère des accessoires du bar."""
 
-    def __init__(self):
+    def __init__(self, name, verbose):
+        super().__init__(name, verbose)
         self.file = []
 
 
 class Pic(Accessoire):
     """
     Un pic contient les commandes à fabriquer.
-    Il peut embrocher un post-it contenant une commande
-    (une liste de consommations) par-dessus les post-it
-    déjà présents et libérer le premier embroché.
     """
+
+    def __init__(self, name, verbose):
+        super().__init__(name, verbose)
 
     def embrocher(self, postit):
         """Ajoute un post-it à la file."""
+
         self.file.append(postit)
 
+        self.log(
+            f"post-it '{postit}' embroché, "
+            f"{len(self.file)} post-it(s) à traiter"
+        )
+
     def liberer(self):
-        """Récupère le plus ancien post-it."""
+        """Récupère le dernier post-it embroché."""
+
         if self.file:
             postit = self.file.pop()
+
+            self.log(
+                f"post-it '{postit}' libéré, "
+                f"{len(self.file)} post-it(s) à traiter"
+            )
+
             return postit
+
         return None
 
 class Bar(Accessoire):
     """
-    Un bar peut recevoir des commandes (composées de consommations),
-    en attente d'être servies (évacuées).
+    Un bar peut recevoir des commandes,
+    en attente d'être servies.
     """
+
+    def __init__(self, name, verbose):
+        super().__init__(name, verbose)
 
     def recevoir(self, commande):
         """Dépose un plateau sur le bar."""
+
         self.file.append(commande)
 
+        self.log(
+            f"'{commande}' posée, "
+            f"{len(self.file)} commande(s) à servir"
+        )
+
     def evacuer(self):
-        """Récupère le plus ancien plateau."""
+        """Récupère le dernier plateau déposé."""
+
         if self.file:
             commande = self.file.pop()
+
+            self.log(
+                f"'{commande}' évacuée, "
+                f"{len(self.file)} commande(s) à servir"
+            )
+
             return commande
+
         return None
 
 
@@ -79,44 +129,45 @@ class Clients:
                 return None
 
 
-class Employe:
-    """Classe mère des employés."""
+class Employe(Logable):
+    """Classe mère modélisant un employé."""
 
-    def __init__(self, nom, pic, bar, clients):
-        self.nom = nom
+    def __init__(self, pic, bar, clients, name, verbose):
+
+        super().__init__(name, verbose)
+
         self.pic = pic
         self.bar = bar
         self.clients = clients
 
-        self.afficher("prêt pour le service")
+        self.step = 0
 
-    def afficher(self, message):
-        print(f"{self.nom}: {message}")
+        self.log("prêt pour le service")
 
 class Serveur(Employe):
 
-    def __init__(self, pic, bar, clients):
-        super().__init__("Serveur", pic, bar, clients)
+    def __init__(self, pic, bar, clients, name, verbose):
+        super().__init__(pic, bar, clients, name, verbose)
+
         self.commandes_terminees = False
 
     def prendre_commande(self):
         """Prend une commande et embroche un post-it."""
 
-        self.afficher("prêt pour prendre une commande :")
+        self.log("prêt pour prendre une nouvelle commande...")
 
         commande = self.clients.commande()
-        
+
         if commande is None:
             return False
 
-        self.afficher(f"j'ai la commande '{commande}'")
+        self.log(f"j'ai la commande '{commande}'")
 
-        self.afficher(f"j'écris sur le post-it '{commande}'")
+        self.log(f"j'écris sur le post-it '{commande}'")
 
         self.pic.embrocher(commande)
 
         return True
-
 
     def servir(self):
         """Prend un plateau sur le bar et sert les clients."""
@@ -124,11 +175,11 @@ class Serveur(Employe):
         commande = self.bar.evacuer()
 
         if commande is not None:
-            self.afficher(f"j'apporte la commande' {commande}")
+
+            self.log(f"j'apporte la commande '{commande}'")
 
             for cocktail in commande:
-                self.afficher(f"je sers {cocktail}")
-
+                self.log(f"je sers '{cocktail}'")
 
     def run(self):
         """Serveur en action."""
@@ -149,8 +200,8 @@ class Serveur(Employe):
 
 class Bariste(Employe):
 
-    def __init__(self, pic, bar, clients):
-        super().__init__("Bariste", pic, bar, clients)
+    def __init__(self, pic, bar, clients, name, verbose):
+        super().__init__(pic, bar, clients, name, verbose)
 
     def preparer(self):
         """Prépare une commande et la dépose sur le bar."""
@@ -160,12 +211,12 @@ class Bariste(Employe):
         if commande is None:
             return
 
-        self.afficher(f"je commence la fabrication de {commande}")
+        self.log(f"je commence la fabrication de '{commande}'")
 
         for cocktail in commande:
-            self.afficher(f"je prépare '{cocktail}'")
+            self.log(f"je prépare '{cocktail}'")
 
-        self.afficher(f"la commande {commande} est prête")
+        self.log(f"la commande {commande} est prête")
 
         self.bar.recevoir(commande)
 
@@ -182,27 +233,49 @@ def usage():
 
 def main():
 
+    global logf
+
     if len(sys.argv) != 2:
         usage()
 
     fcommandes = sys.argv[1]
 
-    le_pic = Pic()
-    le_bar = Bar()
+    logfile = Path(__file__).resolve().parent / "borabora.log"
 
-    les_clients = Clients(fcommandes)
+    print(f"Logging in {logfile}...")
 
-    bob = Bariste(le_pic, le_bar, les_clients)
-    alice = Serveur(le_pic, le_bar, les_clients)
+    logf = open(logfile, "a", encoding="utf-8")
 
-    # 1. Le serveur prend les commandes
-    alice.run()
+    print("\n---", file=logf, flush=True)
 
-    # 2. Le bariste prépare les commandes
-    bob.run()
+    try:
 
-    # 3. Le serveur apporte les consommations
-    alice.run()
+        les_clients = Clients(fcommandes)
+
+        le_pic = Pic(name="le_pic", verbose=False)
+        le_bar = Bar(name="le_bar", verbose=False)
+
+        bob = Bariste(
+            le_pic, le_bar, les_clients,
+            name="bob", verbose=True
+        )
+
+        alice = Serveur(
+            le_pic, le_bar, les_clients,
+            name="alice", verbose=False
+        )
+
+        # 1. Le serveur prend les commandes
+        alice.run()
+
+        # 2. Le bariste prépare les commandes
+        bob.run()
+
+        # 3. Le serveur apporte les consommations
+        alice.run()
+
+    finally:
+        logf.close()
 
 
 if __name__ == "__main__":
