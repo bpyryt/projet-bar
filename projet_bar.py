@@ -1,3 +1,8 @@
+import sys
+import time
+import re
+
+
 class Accessoire:
     """Classe mère des accessoires du bar"""
 
@@ -20,7 +25,7 @@ class Pic(Accessoire):
     def liberer(self):
         """Récupère le plus ancien post-it."""
         if self.file:
-            postit = self.file.pop(0)
+            postit = self.file.pop()
             return postit
         return None
 
@@ -37,42 +42,80 @@ class Bar(Accessoire):
     def evacuer(self):
         """Récupère le plus ancien plateau."""
         if self.file:
-            commande = self.file.pop(0)
+            commande = self.file.pop()
             return commande
         return None
+
+
+class Clients:
+
+    def __init__(self, fname):
+        commandes = []
+
+        start = time.time()
+        fmt = re.compile(r"(\d+)\s+(.*)")
+
+        with open(fname,"r") as f:
+            for line in f:
+                found = fmt.search(line)
+
+                if found:
+                    when = int(found.group(1))
+                    what = found.group(2)
+
+                    commandes.append(
+                        (start + when, what.split(","))
+                    )
+
+        self.commandes = commandes[::-1]
+
+
+    def commande(self):
+            if len(self.commandes)>0:
+              while True:
+                if time.time()>self.commandes[-1][0]:
+                    return self.commandes.pop()[1]
+            else:
+                return None
+
 
 class Employe:
     """Classe mère des employés."""
 
-    def __init__(self, nom, pic, bar):
+    def __init__(self, nom, pic, bar, clients):
         self.nom = nom
         self.pic = pic
         self.bar = bar
+        self.clients = clients
+
+        self.afficher("prêt pour le service")
 
     def afficher(self, message):
         print(f"{self.nom}: {message}")
 
 class Serveur(Employe):
 
-    def __init__(self, pic, bar, commandes):
-        super().__init__("Serveur", pic, bar)
-        self.commandes = commandes.copy()
+    def __init__(self, pic, bar, clients):
+        super().__init__("Serveur", pic, bar, clients)
+        self.commandes_terminees = False
 
     def prendre_commande(self):
         """Prend une commande et embroche un post-it."""
 
-        if not self.commandes:
-            return
-
         self.afficher("prêt pour prendre une commande :")
 
-        commande = self.commandes.pop(0)
+        commande = self.clients.commande()
+        
+        if commande is None:
+            return False
 
-        self.afficher(f"j'ai la commande '{','.join(commande)}'")
+        self.afficher(f"j'ai la commande '{commande}'")
 
         self.afficher(f"j'écris sur le post-it '{commande}'")
 
         self.pic.embrocher(commande)
+
+        return True
 
 
     def servir(self):
@@ -90,19 +133,24 @@ class Serveur(Employe):
     def run(self):
         """Serveur en action."""
 
-        if self.commandes:
-            while self.commandes:
-                self.prendre_commande()
+        if not self.commandes_terminees:
 
-        elif self.bar.file:
+            while self.prendre_commande():
+                pass
+
+            self.commandes_terminees = True
+
+        else:
+
             while self.bar.file:
                 self.servir()
 
 
+
 class Bariste(Employe):
 
-    def __init__(self, pic, bar):
-        super().__init__("Bariste", pic, bar)
+    def __init__(self, pic, bar, clients):
+        super().__init__("Bariste", pic, bar, clients)
 
     def preparer(self):
         """Prépare une commande et la dépose sur le bar."""
@@ -128,28 +176,35 @@ class Bariste(Employe):
             self.preparer()
 
 
+def usage():
+    print(f"usage: {sys.argv[0]} fichier")
+    sys.exit(1)
+
 def main():
 
-    commandes = [
-        ["planteur", "piña colada"],
-        ["tequila sunrise", "margarita"]
-    ]
+    if len(sys.argv) != 2:
+        usage()
 
-    pic = Pic()
-    bar = Bar()
+    fcommandes = sys.argv[1]
 
-    serveur = Serveur(pic, bar, commandes)
-    bariste = Bariste(pic, bar)
+    le_pic = Pic()
+    le_bar = Bar()
 
-    bariste.afficher("prêt pour le service")
-    serveur.afficher("prêt pour le service")
+    les_clients = Clients(fcommandes)
 
-    serveur.run()
+    bob = Bariste(le_pic, le_bar, les_clients)
+    alice = Serveur(le_pic, le_bar, les_clients)
 
-    bariste.run()
+    # 1. Le serveur prend les commandes
+    alice.run()
 
-    serveur.run()
+    # 2. Le bariste prépare les commandes
+    bob.run()
+
+    # 3. Le serveur apporte les consommations
+    alice.run()
 
 
 if __name__ == "__main__":
     main()
+
