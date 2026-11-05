@@ -3,8 +3,6 @@ import time
 import re
 from pathlib import Path
 
-print("LE SCRIPT DEMARRE")
-
 logf = None
 
 class Logable:
@@ -103,18 +101,20 @@ class Clients:
         commandes = []
 
         start = time.time()
+        delai_total = 0
         fmt = re.compile(r"(\d+)\s+(.*)")
 
-        with open(fname,"r") as f:
+        with open(fname, "r", encoding="utf-8") as f:
             for line in f:
                 found = fmt.search(line)
 
                 if found:
                     when = int(found.group(1))
                     what = found.group(2)
+                    delai_total += when
 
                     commandes.append(
-                        (start + when, what.split(","))
+                        (start + delai_total, what.split(","))
                     )
 
         self.commandes = commandes[::-1]
