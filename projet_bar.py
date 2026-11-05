@@ -25,7 +25,7 @@ class Accessoire(Logable):
 
     def __init__(self, name, verbose):
         super().__init__(name, verbose)
-        self.file = []
+        self.file = asyncio.Queue()
 
 
 class Pic(Accessoire):
@@ -36,30 +36,28 @@ class Pic(Accessoire):
     def __init__(self, name, verbose):
         super().__init__(name, verbose)
 
-    def embrocher(self, postit):
+    async def embrocher(self, postit):
         """Ajoute un post-it à la file."""
 
-        self.file.append(postit)
+        await self.file.put(postit)
 
         self.log(
             f"post-it '{postit}' embroché, "
-            f"{len(self.file)} post-it(s) à traiter"
+            f"{self.file.qsize()} post-it(s) à traiter"
         )
 
-    def liberer(self):
-        """Récupère le dernier post-it embroché."""
 
-        if self.file:
-            postit = self.file.pop()
+    async def liberer(self):
+        """Attend et récupère le premier post-it disponible."""
 
-            self.log(
-                f"post-it '{postit}' libéré, "
-                f"{len(self.file)} post-it(s) à traiter"
-            )
+        postit = await self.file.get()
 
-            return postit
+        self.log(
+            f"post-it '{postit}' libéré, "
+            f"{self.file.qsize()} post-it(s) à traiter"
+        )
 
-        return None
+        return postit
 
 class Bar(Accessoire):
     """
@@ -70,30 +68,28 @@ class Bar(Accessoire):
     def __init__(self, name, verbose):
         super().__init__(name, verbose)
 
-    def recevoir(self, commande):
+    async def recevoir(self, commande):
         """Dépose un plateau sur le bar."""
 
-        self.file.append(commande)
+        await self.file.put(commande)
 
         self.log(
             f"'{commande}' posée, "
-            f"{len(self.file)} commande(s) à servir"
+            f"{self.file.qsize()} commande(s) à servir"
         )
 
-    def evacuer(self):
-        """Récupère le dernier plateau déposé."""
 
-        if self.file:
-            commande = self.file.pop()
+    async def evacuer(self):
+        """Attend et récupère le premier plateau disponible."""
 
-            self.log(
-                f"'{commande}' évacuée, "
-                f"{len(self.file)} commande(s) à servir"
-            )
+        commande = await self.file.get()
 
-            return commande
+        self.log(
+            f"'{commande}' évacuée, "
+            f"{self.file.qsize()} commande(s) à servir"
+        )
 
-        return None
+        return commande
 
 
 class Clients:
@@ -151,7 +147,7 @@ class Serveur(Employe):
         super().__init__(pic, bar, clients, name, verbose)
 
 
-    def prendre_commande(self):
+    async def prendre_commande(self):
         """Prend une commande et embroche un post-it."""
 
         self.log("prêt pour prendre une nouvelle commande...")
@@ -162,17 +158,16 @@ class Serveur(Employe):
             return False
 
         self.log(f"j'ai la commande '{commande}'")
-
         self.log(f"j'écris sur le post-it '{commande}'")
 
-        self.pic.embrocher(commande)
+        await self.pic.embrocher(commande)
 
         return True
 
-    def servir(self):
+    async def servir(self):
         """Prend un plateau sur le bar et sert les clients."""
 
-        commande = self.bar.evacuer()
+        commande = await self.bar.evacuer()
 
         if commande is not None:
 
@@ -185,15 +180,15 @@ class Serveur(Employe):
     async def prendre_les_commandes(self):
         """Prend successivement les commandes des clients."""
 
-        while self.prendre_commande():
+        while await self.prendre_commande():
             pass
 
 
     async def servir_les_commandes(self):
         """Sert les commandes déposées sur le bar."""
 
-        while self.bar.file:
-            self.servir()
+        while not self.bar.file.empty():
+            await self.servir()
 
 
 class Bariste(Employe):
@@ -201,10 +196,10 @@ class Bariste(Employe):
     def __init__(self, pic, bar, clients, name, verbose):
         super().__init__(pic, bar, clients, name, verbose)
 
-    def preparer(self):
+    async def preparer(self):
         """Prépare une commande et la dépose sur le bar."""
 
-        commande = self.pic.liberer()
+        commande = await self.pic.liberer()
 
         if commande is None:
             return
@@ -216,13 +211,13 @@ class Bariste(Employe):
 
         self.log(f"la commande {commande} est prête")
 
-        self.bar.recevoir(commande)
+        await self.bar.recevoir(commande)
 
     async def run(self):
         """Bariste en action."""
 
-        while self.pic.file:
-            self.preparer()
+        while not self.pic.file.empty():
+            await self.preparer()
 
 
 def usage():
@@ -236,8 +231,8 @@ async def service(alice, bob):
 
     await asyncio.gather(
         alice.prendre_les_commandes(),
-        alice.servir_les_commandes(),
-        bob.run()
+        bob.run(),
+        alice.servir_les_commandes()
     )
 
 def main():
