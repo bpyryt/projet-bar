@@ -2,6 +2,7 @@ import sys
 import time
 import re
 from pathlib import Path
+import asyncio
 
 logf = None
 
@@ -149,7 +150,6 @@ class Serveur(Employe):
     def __init__(self, pic, bar, clients, name, verbose):
         super().__init__(pic, bar, clients, name, verbose)
 
-        self.commandes_terminees = False
 
     def prendre_commande(self):
         """Prend une commande et embroche un post-it."""
@@ -181,21 +181,19 @@ class Serveur(Employe):
             for cocktail in commande:
                 self.log(f"je sers '{cocktail}'")
 
-    def run(self):
-        """Serveur en action."""
 
-        if not self.commandes_terminees:
+    async def prendre_les_commandes(self):
+        """Prend successivement les commandes des clients."""
 
-            while self.prendre_commande():
-                pass
+        while self.prendre_commande():
+            pass
 
-            self.commandes_terminees = True
 
-        else:
+    async def servir_les_commandes(self):
+        """Sert les commandes déposées sur le bar."""
 
-            while self.bar.file:
-                self.servir()
-
+        while self.bar.file:
+            self.servir()
 
 
 class Bariste(Employe):
@@ -220,7 +218,7 @@ class Bariste(Employe):
 
         self.bar.recevoir(commande)
 
-    def run(self):
+    async def run(self):
         """Bariste en action."""
 
         while self.pic.file:
@@ -230,6 +228,17 @@ class Bariste(Employe):
 def usage():
     print(f"usage: {sys.argv[0]} fichier")
     sys.exit(1)
+
+
+
+async def service(alice, bob):
+    """Organise les activités concurrentes du bar."""
+
+    await asyncio.gather(
+        alice.prendre_les_commandes(),
+        alice.servir_les_commandes(),
+        bob.run()
+    )
 
 def main():
 
@@ -252,8 +261,8 @@ def main():
 
         les_clients = Clients(fcommandes)
 
-        le_pic = Pic(name="le_pic", verbose=False)
-        le_bar = Bar(name="le_bar", verbose=False)
+        le_pic = Pic(name="le_pic", verbose=True)
+        le_bar = Bar(name="le_bar", verbose=True)
 
         bob = Bariste(
             le_pic, le_bar, les_clients,
@@ -262,17 +271,11 @@ def main():
 
         alice = Serveur(
             le_pic, le_bar, les_clients,
-            name="alice", verbose=False
+            name="alice", verbose=True
         )
 
-        # 1. Le serveur prend les commandes
-        alice.run()
+        asyncio.run(service(alice, bob))
 
-        # 2. Le bariste prépare les commandes
-        bob.run()
-
-        # 3. Le serveur apporte les consommations
-        alice.run()
 
     finally:
         logf.close()
