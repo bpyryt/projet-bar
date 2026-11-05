@@ -166,16 +166,21 @@ class Serveur(Employe):
         return True
 
     async def servir(self):
-        """Prend un plateau sur le bar et sert les clients."""
+        """Attend un plateau et sert les clients."""
 
         commande = await self.bar.evacuer()
 
-        if commande is not None:
+        if commande is None:
+            return False
 
+        async with self.verrou:
             self.log(f"j'apporte la commande '{commande}'")
 
             for cocktail in commande:
                 self.log(f"je sers '{cocktail}'")
+                await asyncio.sleep(0.1)
+
+        return True
 
 
     async def prendre_les_commandes(self):
@@ -192,11 +197,13 @@ class Serveur(Employe):
 
 
     async def servir_les_commandes(self):
-        """Sert les commandes déposées sur le bar."""
+        """Sert les commandes jusqu'au signal de fin."""
 
-        while not self.bar.file.empty():
-            async with self.verrou:
-                await self.servir()
+        while True:
+            commande_servie = await self.servir()
+
+            if not commande_servie:
+                break
 
             await asyncio.sleep(0)
 
@@ -212,7 +219,7 @@ class Bariste(Employe):
         commande = await self.pic.liberer()
 
         if commande is None:
-            return
+            return False
 
         self.log(f"je commence la fabrication de '{commande}'")
 
@@ -223,11 +230,17 @@ class Bariste(Employe):
 
         await self.bar.recevoir(commande)
 
-    async def run(self):
-        """Bariste en action."""
+        return True
 
-        while not self.pic.file.empty():
-            await self.preparer()
+    async def run(self):
+        """Prépare les commandes jusqu'au signal de fin."""
+
+        while True:
+            commande_preparee = await self.preparer()
+
+            if not commande_preparee:
+                break
+
             await asyncio.sleep(0)
 
 
@@ -237,14 +250,33 @@ def usage():
 
 
 
-async def service(alice, bob):
-    """Organise les activités concurrentes du bar."""
+async def service(alice, bob, joeffrey):
+    """Organise le fonctionnement concurrent du bar."""
 
-    await asyncio.gather(
+    
+    prises = asyncio.gather(
         alice.prendre_les_commandes(),
-        bob.run(),
-        alice.servir_les_commandes()
+        joeffrey.prendre_les_commandes()
     )
+
+    preparation = asyncio.create_task(bob.run())
+
+    services = [
+        asyncio.create_task(alice.servir_les_commandes()),
+        asyncio.create_task(joeffrey.servir_les_commandes())
+    ]
+
+    await prises
+
+    await bob.pic.file.put(None)
+
+    await preparation
+
+    await alice.bar.file.put(None)
+    await joeffrey.bar.file.put(None)
+
+    await asyncio.gather(*services)
+
 
 def main():
 
@@ -280,7 +312,12 @@ def main():
             name="alice", verbose=True
         )
 
-        asyncio.run(service(alice, bob))
+        joeffrey = Serveur(
+            le_pic, le_bar, les_clients,
+            name="joeffrey", verbose=True
+        )
+
+        asyncio.run(service(alice, bob, joeffrey))
 
 
     finally:
