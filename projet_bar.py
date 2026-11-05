@@ -181,7 +181,7 @@ class Serveur(Employe):
         """Prend successivement les commandes des clients."""
 
         while await self.prendre_commande():
-            pass
+            await asyncio.sleep(0)
 
 
     async def servir_les_commandes(self):
@@ -189,6 +189,7 @@ class Serveur(Employe):
 
         while not self.bar.file.empty():
             await self.servir()
+            await asyncio.sleep(0)
 
 
 class Bariste(Employe):
@@ -218,6 +219,7 @@ class Bariste(Employe):
 
         while not self.pic.file.empty():
             await self.preparer()
+            await asyncio.sleep(0)
 
 
 def usage():
