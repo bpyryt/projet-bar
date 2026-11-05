@@ -52,9 +52,13 @@ class Pic(Accessoire):
 
         postit = await self.file.get()
 
+        if postit is None:
+            self.log("fin des commandes à préparer")
+            return None
+
         self.log(
             f"post-it '{postit}' libéré, "
-            f"{self.file.qsize()} post-it(s) à traiter"
+            f"{self.file.qsize()} élément(s) en attente"
         )
 
         return postit
@@ -84,13 +88,16 @@ class Bar(Accessoire):
 
         commande = await self.file.get()
 
+        if commande is None:
+            self.log("signal de fin de service reçu")
+            return None
+
         self.log(
             f"'{commande}' évacuée, "
-            f"{self.file.qsize()} commande(s) à servir"
+            f"{self.file.qsize()} élément(s) en attente"
         )
 
         return commande
-
 
 class Clients:
 
@@ -124,6 +131,22 @@ class Clients:
                     return self.commandes.pop()[1]
             else:
                 return None
+
+    async def commande_async(self):
+        """Attend une commande sans bloquer la boucle d'événements."""
+
+        while self.commandes:
+
+            instant = self.commandes[-1][0]
+            attente = instant - time.time()
+
+            if attente >= 0:
+                await asyncio.sleep(max(attente, 0.001))
+                continue
+
+            return self.commande()
+
+        return None
 
 
 class Employe(Logable):
@@ -170,23 +193,24 @@ class Serveur(Employe):
 
 
     async def prendre_commande(self):
-        """Prend une commande et embroche un post-it."""
+        """Attend un client, puis prend sa commande."""
 
         self.log("prêt pour prendre une nouvelle commande...")
 
-        commande = self.clients.commande()
+        commande = await self.clients.commande_async()
 
         if commande is None:
             return False
 
-        self.log(f"j'ai la commande '{commande}'")
+        async with self.verrou:
 
-        # Temps nécessaire pour noter la commande
-        await asyncio.sleep(self.productivite)
+            self.log(f"j'ai la commande '{commande}'")
 
-        self.log(f"j'écris sur le post-it '{commande}'")
+            await asyncio.sleep(self.productivite)
 
-        await self.pic.embrocher(commande)
+            self.log(f"j'écris sur le post-it '{commande}'")
+
+            await self.pic.embrocher(commande)
 
         return True
 
@@ -194,13 +218,7 @@ class Serveur(Employe):
     async def prendre_les_commandes(self):
         """Prend successivement les commandes des clients."""
 
-        while True:
-            async with self.verrou:
-                commande_prise = await self.prendre_commande()
-
-            if not commande_prise:
-                break
-
+        while await self.prendre_commande():
             await asyncio.sleep(0)
 
     async def servir_les_commandes(self):
