@@ -129,7 +129,7 @@ class Clients:
 class Employe(Logable):
     """Classe mère modélisant un employé."""
 
-    def __init__(self, pic, bar, clients, name, verbose):
+    def __init__(self, pic, bar, clients, name, verbose, productivite):
 
         super().__init__(name, verbose)
 
@@ -140,30 +140,15 @@ class Employe(Logable):
         self.step = 0
         self.verrou = asyncio.Lock()
 
+        self.productivite = productivite
+
         self.log("prêt pour le service")
 
 class Serveur(Employe):
 
-    def __init__(self, pic, bar, clients, name, verbose):
-        super().__init__(pic, bar, clients, name, verbose)
+    def __init__(self, pic, bar, clients, name, verbose, productivite):
+        super().__init__(pic, bar, clients, name, verbose, productivite)
 
-
-    async def prendre_commande(self):
-        """Prend une commande et embroche un post-it."""
-
-        self.log("prêt pour prendre une nouvelle commande...")
-
-        commande = self.clients.commande()
-
-        if commande is None:
-            return False
-
-        self.log(f"j'ai la commande '{commande}'")
-        self.log(f"j'écris sur le post-it '{commande}'")
-
-        await self.pic.embrocher(commande)
-
-        return True
 
     async def servir(self):
         """Attend un plateau et sert les clients."""
@@ -178,7 +163,30 @@ class Serveur(Employe):
 
             for cocktail in commande:
                 self.log(f"je sers '{cocktail}'")
-                await asyncio.sleep(0.1)
+
+                await asyncio.sleep(self.productivite)
+
+        return True
+
+
+    async def prendre_commande(self):
+        """Prend une commande et embroche un post-it."""
+
+        self.log("prêt pour prendre une nouvelle commande...")
+
+        commande = self.clients.commande()
+
+        if commande is None:
+            return False
+
+        self.log(f"j'ai la commande '{commande}'")
+
+        # Temps nécessaire pour noter la commande
+        await asyncio.sleep(self.productivite)
+
+        self.log(f"j'écris sur le post-it '{commande}'")
+
+        await self.pic.embrocher(commande)
 
         return True
 
@@ -195,7 +203,6 @@ class Serveur(Employe):
 
             await asyncio.sleep(0)
 
-
     async def servir_les_commandes(self):
         """Sert les commandes jusqu'au signal de fin."""
 
@@ -210,8 +217,8 @@ class Serveur(Employe):
 
 class Bariste(Employe):
 
-    def __init__(self, pic, bar, clients, name, verbose):
-        super().__init__(pic, bar, clients, name, verbose)
+    def __init__(self, pic, bar, clients, name, verbose, productivite):
+        super().__init__(pic, bar, clients, name, verbose, productivite)
 
     async def preparer(self):
         """Prépare une commande et la dépose sur le bar."""
@@ -225,6 +232,8 @@ class Bariste(Employe):
 
         for cocktail in commande:
             self.log(f"je prépare '{cocktail}'")
+
+            await asyncio.sleep(self.productivite)
 
         self.log(f"la commande {commande} est prête")
 
@@ -304,19 +313,24 @@ def main():
 
         bob = Bariste(
             le_pic, le_bar, les_clients,
-            name="bob", verbose=True
+            name="bob",
+            verbose=True,
+            productivite=0.8
         )
 
         alice = Serveur(
             le_pic, le_bar, les_clients,
-            name="alice", verbose=True
+            name="alice",
+            verbose=True,
+            productivite=0.2
         )
 
         joeffrey = Serveur(
             le_pic, le_bar, les_clients,
-            name="joeffrey", verbose=True
+            name="joeffrey",
+            verbose=True,
+            productivite=0.5
         )
-
         asyncio.run(service(alice, bob, joeffrey))
 
 
