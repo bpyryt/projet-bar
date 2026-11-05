@@ -1,0 +1,6 @@
+# Fichier de journal
+borabora.log
+
+# Fichiers temporaires Python
+__pycache__/
+*.pyc
