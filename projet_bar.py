@@ -138,6 +138,7 @@ class Employe(Logable):
         self.clients = clients
 
         self.step = 0
+        self.verrou = asyncio.Lock()
 
         self.log("prêt pour le service")
 
@@ -180,7 +181,13 @@ class Serveur(Employe):
     async def prendre_les_commandes(self):
         """Prend successivement les commandes des clients."""
 
-        while await self.prendre_commande():
+        while True:
+            async with self.verrou:
+                commande_prise = await self.prendre_commande()
+
+            if not commande_prise:
+                break
+
             await asyncio.sleep(0)
 
 
@@ -188,7 +195,9 @@ class Serveur(Employe):
         """Sert les commandes déposées sur le bar."""
 
         while not self.bar.file.empty():
-            await self.servir()
+            async with self.verrou:
+                await self.servir()
+
             await asyncio.sleep(0)
 
 
