@@ -28,13 +28,13 @@ Partie 1 — Exécution séquentielle
 
 Étape 1 : Implémentation des classes et du fonctionnement séquentiel.  Check 
 
-Étape 2 : Lecture des commandes depuis un fichier.     En cours
+Étape 2 : Lecture des commandes depuis un fichier.     Check 
 
-Étape 3 : Mise en place d'un système de journalisation (logs).
+Étape 3 : Mise en place d'un système de journalisation (logs).       Check 
 
 
 
-Partie 2 — Programmation concurrente
+Partie 2 — Programmation concurrente            En cours
 
 Introduction des coroutines.
 
