@@ -34,19 +34,21 @@ Partie 1 — Exécution séquentielle
 
 
 
-Partie 2 — Programmation concurrente            En cours
+Partie 2 — Programmation concurrente            
 
-Introduction des coroutines.
+Introduction des coroutines.         Check
 
-Utilisation de asyncio.Queue.
+Utilisation de asyncio.Queue.        Check
 
-Coopération entre les tâches.
+Coopération entre les tâches.       Check
 
-Gestion des tâches du serveur.
+Gestion des tâches du serveur.         Check
 
 
 Partie 3 — Extension
 
-Ajout d'un second serveur.
+Ajout d'un second serveur.              Check
 
-Gestion de la productivité des employés.
+Gestion de la productivité des employés.          Check
+
+Service possible pour le barista.              Check
