@@ -7,9 +7,6 @@ import asyncio
 logf = None
 
 class Logable:
-    """
-    Classe de base pour disposer d'une méthode log.
-    """
 
     def __init__(self, name, verbose):
         self.name = name
@@ -29,15 +26,11 @@ class Accessoire(Logable):
 
 
 class Pic(Accessoire):
-    """
-    Un pic contient les commandes à fabriquer.
-    """
 
     def __init__(self, name, verbose):
         super().__init__(name, verbose)
 
     async def embrocher(self, postit):
-        """Ajoute un post-it à la file."""
 
         await self.file.put(postit)
 
@@ -48,7 +41,6 @@ class Pic(Accessoire):
 
 
     async def liberer(self):
-        """Attend et récupère le premier post-it disponible."""
 
         postit = await self.file.get()
 
@@ -64,16 +56,11 @@ class Pic(Accessoire):
         return postit
 
 class Bar(Accessoire):
-    """
-    Un bar peut recevoir des commandes,
-    en attente d'être servies.
-    """
 
     def __init__(self, name, verbose):
         super().__init__(name, verbose)
 
     async def recevoir(self, commande):
-        """Dépose un plateau sur le bar."""
 
         await self.file.put(commande)
 
@@ -84,7 +71,6 @@ class Bar(Accessoire):
 
 
     async def evacuer(self):
-        """Attend et récupère le premier plateau disponible."""
 
         commande = await self.file.get()
 
@@ -122,6 +108,7 @@ class Clients:
                     )
 
         self.commandes = commandes[::-1]
+        self.verrou = asyncio.Lock()
 
 
     def commande(self):
@@ -133,24 +120,29 @@ class Clients:
                 return None
 
     async def commande_async(self):
-        """Attend une commande sans bloquer la boucle d'événements."""
 
-        while self.commandes:
+        while True:
+            async with self.verrou:
+                if not self.commandes:
+                    return None
 
-            instant = self.commandes[-1][0]
-            attente = instant - time.time()
+                instant = self.commandes[-1][0]
+                attente = instant - time.time()
 
-            if attente >= 0:
-                await asyncio.sleep(max(attente, 0.001))
-                continue
+                if attente <= 0:
+                    return self.commandes.pop()[1]
 
-            return self.commande()
+            await asyncio.sleep(attente)
+
+    async def commande_si_disponible(self):
+
+        async with self.verrou:
+            if self.commandes and self.commandes[-1][0] <= time.time():
+                return self.commandes.pop()[1]
 
         return None
 
-
 class Employe(Logable):
-    """Classe mère modélisant un employé."""
 
     def __init__(self, pic, bar, clients, name, verbose, productivite):
 
@@ -174,7 +166,6 @@ class Serveur(Employe):
 
 
     async def servir(self):
-        """Attend un plateau et sert les clients."""
 
         commande = await self.bar.evacuer()
 
@@ -193,7 +184,6 @@ class Serveur(Employe):
 
 
     async def prendre_commande(self):
-        """Attend un client, puis prend sa commande."""
 
         self.log("prêt pour prendre une nouvelle commande...")
 
@@ -216,13 +206,11 @@ class Serveur(Employe):
 
 
     async def prendre_les_commandes(self):
-        """Prend successivement les commandes des clients."""
 
         while await self.prendre_commande():
             await asyncio.sleep(0)
 
     async def servir_les_commandes(self):
-        """Sert les commandes jusqu'au signal de fin."""
 
         while True:
             commande_servie = await self.servir()
@@ -238,37 +226,53 @@ class Bariste(Employe):
     def __init__(self, pic, bar, clients, name, verbose, productivite):
         super().__init__(pic, bar, clients, name, verbose, productivite)
 
-    async def preparer(self):
-        """Prépare une commande et la dépose sur le bar."""
-
-        commande = await self.pic.liberer()
-
-        if commande is None:
-            return False
+    async def preparer_commande(self, commande):
 
         self.log(f"je commence la fabrication de '{commande}'")
 
         for cocktail in commande:
             self.log(f"je prépare '{cocktail}'")
-
             await asyncio.sleep(self.productivite)
 
         self.log(f"la commande {commande} est prête")
-
         await self.bar.recevoir(commande)
 
-        return True
+    async def servir_directement(self, commande):
 
-    async def run(self):
-        """Prépare les commandes jusqu'au signal de fin."""
+        self.log(f"je prends directement la commande '{commande}'")
+
+        for cocktail in commande:
+            self.log(f"je prépare directement '{cocktail}'")
+            await asyncio.sleep(self.productivite)
+
+        for cocktail in commande:
+            self.log(f"je sers directement '{cocktail}'")
+            await asyncio.sleep(self.productivite)
+
+
+    async def run(self, prises_terminees):
 
         while True:
-            commande_preparee = await self.preparer()
 
-            if not commande_preparee:
+            if not self.pic.file.empty():
+                commande = await self.pic.liberer()
+
+                if commande is None:
+                    break
+
+                await self.preparer_commande(commande)
+                continue
+
+            commande = await self.clients.commande_si_disponible()
+
+            if commande is not None:
+                await self.servir_directement(commande)
+                continue
+
+            if prises_terminees.is_set():
                 break
 
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.05)
 
 
 def usage():
@@ -278,24 +282,22 @@ def usage():
 
 
 async def service(alice, bob, joeffrey):
-    """Organise le fonctionnement concurrent du bar."""
 
-    
-    prises = asyncio.gather(
-        alice.prendre_les_commandes(),
-        joeffrey.prendre_les_commandes()
-    )
+    prises_terminees = asyncio.Event()
 
-    preparation = asyncio.create_task(bob.run())
+    preparation = asyncio.create_task(bob.run(prises_terminees))
 
     services = [
         asyncio.create_task(alice.servir_les_commandes()),
         asyncio.create_task(joeffrey.servir_les_commandes())
     ]
 
-    await prises
+    await asyncio.gather(
+        alice.prendre_les_commandes(),
+        joeffrey.prendre_les_commandes()
+    )
 
-    await bob.pic.file.put(None)
+    prises_terminees.set()
 
     await preparation
 
